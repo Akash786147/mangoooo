@@ -23,22 +23,25 @@ def main():
     pygame.init()
     controller = GeneralController()
     game = Game()
-    show_intro_screen(game, controller)
+    # Enable AI bots when running with `--ai` command-line flag
+    ai_enabled = '--ai' in sys.argv
+    ai_debug = '--ai-debug' in sys.argv
+    show_intro_screen(game, controller, ai_enabled)
 
 
-def show_intro_screen(game, controller):
+def show_intro_screen(game, controller, ai_enabled=False):
     intro_screen = pygame.image.load('data/screens/intro_screen.png')
     game.display.blit(intro_screen, (0, 0))
     while True:
         game.refresh_window()
         if controller.press_key(pygame.event.get(), K_RETURN):
-            show_level_screen(game, controller)
+            show_level_screen(game, controller, ai_enabled)
 
 
-def show_level_screen(game, controller):
+def show_level_screen(game, controller, ai_enabled=False):
     level_select = LevelSelect()
     level = game.user_select_level(level_select, controller)
-    run_game(game, controller, level)
+    run_game(game, controller, level, ai_enabled)
 
 
 def show_win_screen(game, controller, elapsed_time=0, diamonds_collected=0, total_diamonds=0):
@@ -123,7 +126,7 @@ def show_death_screen(game, controller, level):
             show_level_screen(game, controller)
 
 
-def run_game(game, controller, level="level1"):
+def run_game(game, controller, level="level1", ai_enabled=False):
     # load level data
     if level == "level1":
         board = Board('data/level1.txt')
@@ -197,16 +200,33 @@ def run_game(game, controller, level="level1"):
         collectibles.add_diamond((400, 150), "blue")
         collectibles.add_diamond((150, 250), "red")
 
-    # initialize needed classes
-
-    arrows_controller = ArrowsController()
-    wasd_controller = WASDController()
+    # initialize needed classes: controllers depend on ai flag
+    arrows_controller = None
+    wasd_controller = None
 
     clock = pygame.time.Clock()
     
     # Initialize timer
     start_time = pygame.time.get_ticks()
     elapsed_time = 0
+
+    # allow AI controllers if requested
+    if ai_enabled:
+        try:
+            # Use stable greedy AI controller for reliable demo behavior
+            ai_debug = '--ai-debug' in sys.argv
+            from ai.ai_controller import GreedyAIController
+            magma_ai = GreedyAIController(board, collectibles, fire_door, player_type="magma", debug=ai_debug)
+            hydro_ai = GreedyAIController(board, collectibles, water_door, player_type="water", debug=ai_debug)
+            arrows_controller = magma_ai
+            wasd_controller = hydro_ai
+        except Exception:
+            # fallback to human controllers if AI module fails to load
+            arrows_controller = ArrowsController()
+            wasd_controller = WASDController()
+    else:
+        arrows_controller = ArrowsController()
+        wasd_controller = WASDController()
 
     # main game loop
     while True:
@@ -237,6 +257,29 @@ def run_game(game, controller, level="level1"):
 
         # draw player
         game.draw_player([magma_boy, hydro_girl])
+
+        # AI debug overlays: if controller exposes debug shapes, draw them
+        for ctl in (arrows_controller, wasd_controller):
+            if hasattr(ctl, 'debug_shapes') and ctl.debug_shapes:
+                for shape in ctl.debug_shapes:
+                    kind, payload, color = shape
+                    try:
+                        if kind == 'rect':
+                            # payload is a pygame.Rect
+                            pygame.draw.rect(game.display, color, payload, 1)
+                        elif kind == 'circle':
+                            # payload is (x,y,r)
+                            x, y, r = payload
+                            pygame.draw.circle(game.display, color, (int(x), int(y)), int(r), 1)
+                        elif kind == 'lines':
+                            # payload is a list of (x,y)
+                            if len(payload) >= 2:
+                                pygame.draw.lines(game.display, color, False, payload, 1)
+                        elif kind == 'tile':
+                            # payload is a pygame.Rect for a tile
+                            pygame.draw.rect(game.display, color, payload, 2)
+                    except Exception:
+                        pass
 
         # move player
         arrows_controller.control_player(events, magma_boy)
