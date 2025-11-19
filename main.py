@@ -30,11 +30,24 @@ def main():
 
 
 def show_intro_screen(game, controller, ai_enabled=False):
-    intro_screen = pygame.image.load('data/screens/intro_screen.png')
-    game.display.blit(intro_screen, (0, 0))
+    # Load intro image and scale it to fit the internal game display
+    intro_img = pygame.image.load('data/screens/intro_screen.png')
+    # preserve aspect ratio and center with letterboxing
+    disp_w, disp_h = game.display.get_size()
+    img_w, img_h = intro_img.get_width(), intro_img.get_height()
+    scale = min(disp_w / img_w, disp_h / img_h)
+    new_w, new_h = int(img_w * scale), int(img_h * scale)
+    intro_scaled = pygame.transform.scale(intro_img, (new_w, new_h))
+    offset_x = (disp_w - new_w) // 2
+    offset_y = (disp_h - new_h) // 2
+
     while True:
+        # clear with black (letterbox areas)
+        game.display.fill((0, 0, 0))
+        game.display.blit(intro_scaled, (offset_x, offset_y))
         game.refresh_window()
-        if controller.press_key(pygame.event.get(), K_RETURN):
+        events = pygame.event.get()
+        if controller.press_key(events, K_RETURN):
             show_level_screen(game, controller, ai_enabled)
 
 
